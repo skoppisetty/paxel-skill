@@ -37,9 +37,34 @@ class CondenseUnitTests(unittest.TestCase):
     def test_scrub_redacts_known_secret_shapes(self):
         self.assertEqual(condense.scrub("key sk-ant-" + "A" * 30),
                          "key [REDACTED_ANTHROPIC_KEY]")
-        self.assertIn("[REDACTED_AWS_KEY]", condense.scrub("AKIA" + "B" * 16))
-        self.assertIn("[REDACTED_ENV_SECRET]", condense.scrub("API_TOKEN=hunter2"))
+        self.assertIn("[REDACTED_AWS_ACCESS_KEY]", condense.scrub("AKIA" + "B" * 16))
+        # env_var_secret preserves the variable NAME (secret_scrubber.rb:178-181)
+        self.assertEqual(condense.scrub("API_TOKEN=hunter2"), "API_TOKEN=[REDACTED]")
+        self.assertEqual(condense.scrub("OPENAI_API_KEYS=abc-def"),
+                         "OPENAI_API_KEYS=[REDACTED]")
         self.assertEqual(condense.scrub(None), "")
+
+    def test_scrub_full_pattern_set(self):
+        cases = [
+            ("eyJhbGci123.eyJzdWIi456.sig-789xx", "[REDACTED_JWT]"),
+            ("Bearer " + "a1" * 15, "Bearer [REDACTED]"),
+            ("postgres://user:pass@host:5432/db", "postgres://[REDACTED]@host"),
+            ("redis://:secret@cache:6379", "redis://[REDACTED]@host"),
+            ("pypi-" + "x" * 24, "[REDACTED_PYPI_TOKEN]"),
+            ("AC" + "0" * 32, "[REDACTED_TWILIO_KEY]"),
+            ("1//0" + "r" * 24, "[REDACTED_GOOGLE_OAUTH]"),
+            ("AccountKey=" + "B" * 44, "AccountKey=[REDACTED]"),
+            ("AIza" + "c" * 35, "[REDACTED_GOOGLE_API_KEY]"),
+            ("xapp-" + "d" * 12, "[REDACTED_SLACK_TOKEN]"),
+        ]
+        for raw, expected in cases:
+            self.assertEqual(condense.scrub(raw), expected, msg=raw)
+
+    def test_scrub_ordering_vendor_key_wins_inside_bearer(self):
+        # anthropic_key runs before bearer_token, so the vendor replacement
+        # wins and the bearer pattern no longer matches (secret_scrubber.rb:18-20).
+        out = condense.scrub("Bearer sk-ant-" + "A" * 30)
+        self.assertEqual(out, "Bearer [REDACTED_ANTHROPIC_KEY]")
 
     def test_blocks_normalizes_bare_strings_and_drops_junk(self):
         self.assertEqual(condense.blocks("hi"), [{"type": "text", "text": "hi"}])
@@ -142,6 +167,300 @@ class CondenseSessionTests(unittest.TestCase):
         finally:
             os.remove(path)
         self.assertIn("USER: real line", out["condensed_text"])
+
+
+class CodexFormatDetectionTests(unittest.TestCase):
+    def test_new_format_session_meta_detects_codex(self):
+        path = write_session([
+            {"timestamp": "2026-01-01T00:00:00Z", "type": "session_meta",
+             "payload": {"id": "s1", "cwd": "/p", "originator": "codex_cli_rs"}}])
+        try:
+            self.assertEqual(condense.detect_format(path), "codex_cli")
+        finally:
+            os.remove(path)
+
+    def test_old_format_originator_detects_codex(self):
+        path = write_session([
+            {"id": "s1", "cwd": "/p", "originator": "codex_cli_rs"}])
+        try:
+            self.assertEqual(condense.detect_format(path), "codex_cli")
+        finally:
+            os.remove(path)
+
+    def test_claude_session_detects_claude_code(self):
+        path = write_session([
+            {"type": "user", "message": {"role": "user", "content": "hi"}}])
+        try:
+            self.assertEqual(condense.detect_format(path), "claude_code")
+        finally:
+            os.remove(path)
+
+    def test_codex_launched_from_claude_still_detects_codex(self):
+        # originator is set by the LAUNCHING tool; detection must key on
+        # type=session_meta, not originator (transcript_format_detector.rb:71-83).
+        path = write_session([
+            {"timestamp": "2026-01-01T00:00:00Z", "type": "session_meta",
+             "payload": {"id": "s1", "cwd": "/p", "originator": "Claude Code"}}])
+        try:
+            self.assertEqual(condense.detect_format(path), "codex_cli")
+        finally:
+            os.remove(path)
+
+
+class CodexCondenseTests(unittest.TestCase):
+    @staticmethod
+    def _session():
+        ts = "2026-01-01T00:00:00Z"
+        patch = ("*** Begin Patch\n"
+                 "*** Update File: src/worker.py\n"
+                 "@@\n-old\n+new\n"
+                 "*** Add File: src/new_file.py\n"
+                 "+content\n"
+                 "*** End Patch")
+        return [
+            {"timestamp": ts, "type": "session_meta",
+             "payload": {"id": "sess-1", "cwd": "/Volumes/Code/demo",
+                         "originator": "codex_cli_rs"}},
+            # injected boilerplate must never count as a user prompt
+            {"timestamp": ts, "type": "event_msg",
+             "payload": {"type": "user_message",
+                         "message": "You are Codex, a coding agent running in the Codex CLI"}},
+            {"timestamp": ts, "type": "event_msg",
+             "payload": {"type": "user_message",
+                         "message": "<environment_context>cwd=/x</environment_context>"}},
+            {"timestamp": ts, "type": "event_msg",
+             "payload": {"type": "user_message",
+                         "message": "Fix the retry bug in worker.py"}},
+            {"timestamp": ts, "type": "event_msg",
+             "payload": {"type": "agent_message",
+                         "message": "Looking at worker.py now."}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "reasoning",
+                         "summary": [{"type": "summary_text", "text": "hidden chain"}]}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "function_call", "name": "shell",
+                         "arguments": json.dumps(
+                             {"command": ["bash", "-lc", "git commit -m fix"]})}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "function_call_output", "output": "committed ok"}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "function_call", "name": "shell",
+                         "arguments": json.dumps({"command": ["apply_patch", patch]})}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "function_call", "name": "update_plan",
+                         "arguments": json.dumps(
+                             {"explanation": "plan v1",
+                              "plan": [{"step": "fix retry", "status": "pending"}]})}},
+            {"timestamp": ts, "type": "response_item",
+             "payload": {"type": "message", "role": "developer",
+                         "content": [{"type": "input_text", "text": "dev noise"}]}},
+            {"timestamp": ts, "type": "event_msg",
+             "payload": {"type": "token_count", "input_tokens": 5}},
+        ]
+
+    def _condense(self):
+        path = write_session(self._session())
+        try:
+            return condense.condense_session(path)
+        finally:
+            os.remove(path)
+
+    def test_metadata_and_agent_type(self):
+        out = self._condense()
+        self.assertEqual(out["agent_type"], "codex_cli")
+        self.assertEqual(out["session_id"], "sess-1")
+        self.assertEqual(out["cwd"], "/Volumes/Code/demo")
+
+    def test_system_boilerplate_is_dropped(self):
+        out = self._condense()
+        self.assertNotIn("You are Codex", out["condensed_text"])
+        self.assertNotIn("environment_context", out["condensed_text"])
+        self.assertEqual(out["facts"]["first_prompt"],
+                         "Fix the retry bug in worker.py")
+
+    def test_user_and_agent_messages_map_to_canonical_lines(self):
+        out = self._condense()
+        self.assertIn("USER: Fix the retry bug in worker.py", out["condensed_text"])
+        self.assertIn("ASSISTANT: Looking at worker.py now.", out["condensed_text"])
+
+    def test_shell_call_maps_to_bash_and_counts_git_commit(self):
+        out = self._condense()
+        self.assertIn("Bash(command=", out["condensed_text"])
+        self.assertEqual(out["facts"]["git_commits"], 1)
+
+    def test_function_call_output_becomes_tool_result_marker(self):
+        out = self._condense()
+        self.assertIn("[ToolResult:", out["condensed_text"])
+        self.assertNotIn("committed ok", out["condensed_text"])
+        self.assertEqual(out["facts"]["tool_results"], 1)
+
+    def test_apply_patch_emits_one_edit_or_write_per_file(self):
+        out = self._condense()
+        self.assertIn("Edit(file_path=src/worker.py", out["condensed_text"])
+        self.assertIn("Write(file_path=src/new_file.py", out["condensed_text"])
+        # the patch body itself must never reach the condensed text
+        self.assertNotIn("Begin Patch", out["condensed_text"])
+        self.assertEqual(out["facts"]["code_edits"], 2)
+
+    def test_update_plan_is_a_plan_signal_not_a_code_edit(self):
+        out = self._condense()
+        self.assertIn("Write(file_path=CODEX_PLAN.md", out["condensed_text"])
+        # code_edits stays 2 (the apply_patch files); the synthetic plan
+        # write must not flip episode classification to "shipping".
+        self.assertEqual(out["facts"]["code_edits"], 2)
+
+    def test_reasoning_is_excluded_from_condensed_text(self):
+        # transcript_chunker.rb:414-415 skips thinking blocks from condensed text.
+        out = self._condense()
+        self.assertNotIn("hidden chain", out["condensed_text"])
+
+    def test_developer_messages_are_dropped(self):
+        out = self._condense()
+        self.assertNotIn("dev noise", out["condensed_text"])
+
+    def test_array_arguments_skip_the_entry(self):
+        # Ruby: args["cmd"] on a parsed Array raises TypeError, rescued by
+        # convert_entry → entry skipped (codex_normalizer.rb:195-198). A parse
+        # ERROR, by contrast, yields {} and falls through to Bash("[name]").
+        path = write_session([
+            {"timestamp": "t", "type": "session_meta",
+             "payload": {"id": "s3", "cwd": "/p", "originator": "codex_cli_rs"}},
+            {"timestamp": "t", "type": "response_item",
+             "payload": {"type": "function_call", "name": "shell",
+                         "arguments": "[1, 2]"}},
+        ])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertNotIn("TOOL_USE", out["condensed_text"])
+
+    def test_ruby_nil_only_fallback_keeps_empty_cmd(self):
+        # Ruby || only falls through on nil; cmd="" must be kept, not
+        # replaced by "[exec_command]".
+        path = write_session([
+            {"timestamp": "t", "type": "session_meta",
+             "payload": {"id": "s4", "cwd": "/p", "originator": "codex_cli_rs"}},
+            {"timestamp": "t", "type": "response_item",
+             "payload": {"type": "function_call", "name": "exec_command",
+                         "arguments": json.dumps({"cmd": ""})}},
+        ])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertNotIn("[exec_command]", out["condensed_text"])
+        self.assertIn("Bash(command=,", out["condensed_text"])
+
+    def test_array_command_renders_ruby_inspect_style(self):
+        # Ruby Array#to_s uses double quotes: ["bash", "-lc", ...] — the
+        # condensed text must match byte-for-byte.
+        path = write_session([
+            {"timestamp": "t", "type": "session_meta",
+             "payload": {"id": "s5", "cwd": "/p", "originator": "codex_cli_rs"}},
+            {"timestamp": "t", "type": "response_item",
+             "payload": {"type": "function_call", "name": "shell",
+                         "arguments": json.dumps(
+                             {"command": ["bash", "-lc", "echo hi"]})}},
+        ])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertIn('Bash(command=["bash", "-lc", "echo hi"]', out["condensed_text"])
+
+    def test_reasoning_counts_as_assistant_entry(self):
+        # CodexNormalizer converts reasoning to canonical thinking entries;
+        # only the chunker drops them from condensed TEXT. The entry stream
+        # (and assistant_messages) must include them.
+        out = self._condense()
+        # agent_message + reasoning + shell + apply_patch + update_plan
+        self.assertEqual(out["facts"]["assistant_messages"], 5)
+        self.assertNotIn("hidden chain", out["condensed_text"])
+
+    def test_normalize_codex_attaches_timestamps(self):
+        path = write_session(self._session())
+        try:
+            entries, _ = condense.normalize_codex(path)
+        finally:
+            os.remove(path)
+        self.assertTrue(entries)
+        self.assertTrue(all(e.get("timestamp") == "2026-01-01T00:00:00Z"
+                            for e in entries))
+
+    def test_metadata_captures_model_and_git(self):
+        path = write_session([
+            {"timestamp": "t", "type": "session_meta",
+             "payload": {"id": "s6", "cwd": "/p", "originator": "codex_cli_rs",
+                         "model_provider": "openai",
+                         "git": {"branch": "main",
+                                 "repository_url": "git@github.com:a/b.git"}}},
+            # turn_context must not override session_meta's model_provider
+            {"timestamp": "t", "type": "turn_context",
+             "payload": {"model": "gpt-5", "approval_policy": "never"}},
+        ])
+        try:
+            _, meta = condense.normalize_codex(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(meta["model"], "openai")
+        self.assertEqual(meta["git_branch"], "main")
+        self.assertEqual(meta["git_remote"], "git@github.com:a/b.git")
+
+    def test_render_plan_blank_status_defaults_to_pending(self):
+        # Ruby: step["status"].to_s.presence || "pending" — whitespace-only
+        # is blank, so it must render as pending.
+        out = condense._codex_render_plan([{"step": "x", "status": "  "}], None)
+        self.assertEqual(out, "- [pending] x")
+
+    def test_custom_tool_call_apply_patch_counts_edits(self):
+        # Newer Codex emits apply_patch as a custom_tool_call with the patch in
+        # a top-level "input" field (observed in real ~/.codex rollouts). The
+        # archived Paxel normalizer misses this shape entirely — deliberate
+        # divergence: without it every modern Codex session scores 0 edits.
+        path = write_session([
+            {"timestamp": "t", "type": "session_meta",
+             "payload": {"id": "s2", "cwd": "/p", "originator": "codex_cli_rs"}},
+            {"timestamp": "t", "type": "response_item",
+             "payload": {"type": "custom_tool_call", "name": "apply_patch",
+                         "status": "completed", "call_id": "c1",
+                         "input": ("*** Begin Patch\n"
+                                   "*** Add File: docs/logo.svg\n+<svg/>\n"
+                                   "*** Update File: src/app.py\n@@\n-a\n+b\n"
+                                   "*** End Patch")}},
+        ])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertIn("Write(file_path=docs/logo.svg", out["condensed_text"])
+        self.assertIn("Edit(file_path=src/app.py", out["condensed_text"])
+        self.assertEqual(out["facts"]["code_edits"], 2)
+
+    def test_old_format_raw_entries_condense(self):
+        path = write_session([
+            {"id": "old-1", "cwd": "/old", "originator": "codex_cli_rs"},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "hello from old codex"}]},
+            {"type": "message", "role": "assistant",
+             "content": [{"type": "text", "text": "hi back"}]},
+        ])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(out["agent_type"], "codex_cli")
+        self.assertIn("USER: hello from old codex", out["condensed_text"])
+        self.assertIn("ASSISTANT: hi back", out["condensed_text"])
+
+    def test_claude_sessions_report_claude_agent_type(self):
+        path = write_session([
+            {"type": "user", "message": {"role": "user", "content": "hi"}}])
+        try:
+            out = condense.condense_session(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(out["agent_type"], "claude_code")
 
 
 class AggregateTests(unittest.TestCase):

@@ -1,14 +1,15 @@
 # paxel-skill
 
-A local **self-assessment** that scores your own Claude Code sessions on YC Paxel's exact 5-axis rubric — **without uploading anything to YC**.
+A local **self-assessment** that scores your own Claude Code and Codex CLI sessions on YC Paxel's exact 5-axis rubric — **without uploading anything to YC**.
 
 It bundles Paxel's **verbatim** scoring and narrative prompts (extracted from the public `ghcr.io/yc-software/paxel-client` image) and its band-cut thresholds. The one change: every narrative/scoring call is forced to **Claude Haiku 4.5** (`model: haiku`), not YC's gpt-5.5-none proxy. Nothing leaves your machine.
 
 ## What it does
 
 ```
-your ~/.claude/projects/**/*.jsonl
-  → condense.py        (deterministic: drop tool/file bodies, scrub secrets, chunk)
+your ~/.claude/projects/**/*.jsonl  +  ~/.codex/sessions/**/*.jsonl
+  → condense.py        (deterministic: drop tool/file bodies, scrub secrets, chunk;
+                        Codex rollouts auto-detected & normalized to the same form)
   → narrative prompt   (Haiku, verbatim Paxel SYSTEM_PROMPT)    → per-session notes
   → scoring prompt     (Haiku, verbatim Paxel rubric)           → 5-axis scores
   → aggregate.py       (verbatim band cuts + approx rollup)     → overall + band
@@ -23,6 +24,7 @@ Axes: **Execution Leverage, Steering, Engineering Quality, Product Thinking, Pla
 | Scoring rubric + calibration | **Verbatim** from the client image |
 | Narrative prompt | **Verbatim** |
 | Condensing (drop bodies, scrub, caps) | **Faithful port** of the client pipeline |
+| Codex CLI ingestion | **Faithful port** of `CodexNormalizer` (boilerplate filter, `apply_patch` → per-file edits, `update_plan` → plan signal), plus one deliberate extension: the newer `custom_tool_call` apply_patch shape, which the archived client misses |
 | Band cut thresholds (<4/<6/<8/<9/≥9) | **Verbatim** |
 | Per-axis scores | **Faithful** (model differs — see below) |
 | **Overall score + band** | **APPROXIMATION** — YC's rollup is server-side, not in the image |
@@ -30,7 +32,7 @@ Axes: **Execution Leverage, Steering, Engineering Quality, Product Thinking, Pla
 
 LLM scoring is nondeterministic; re-runs vary. The overall number is a calibration target, not YC's verdict. Full gap analysis: [`reference/GAPS.md`](reference/GAPS.md).
 
-**Not ported in v1:** commit-cluster episode grouping (needs git), the deterministic `session_signals` counts, decision-exchange extraction, code-quality dimensions. All medium/low impact.
+**Not ported in v1:** commit-cluster episode grouping (needs git), the deterministic `session_signals` counts, decision-exchange extraction, code-quality dimensions, and Gemini CLI / Cursor / opencode ingestion (Paxel supports those too; only Claude Code + Codex CLI here). All medium/low impact.
 
 ## Install (as a Claude Code skill)
 
@@ -51,7 +53,7 @@ ln -s "$(pwd)/paxel-skill" ~/.claude/skills/paxel-skill
 
 **Requirements:** Claude Code + Python 3 (standard library only — nothing to `pip install`).
 
-> **Note:** scoring is **per-project** — it defaults to the logs for the repo you're currently in (`~/.claude/projects/<encoded-cwd>/`), not your entire history. Point it at another project's log dir to score that one instead.
+> **Note:** scoring is **per-project** — it defaults to the logs for the repo you're currently in (`~/.claude/projects/<encoded-cwd>/`, plus Codex sessions whose `cwd` matches), not your entire history. Point it at another project's log dir to score that one instead.
 
 ## Run the scripts directly (no skill)
 

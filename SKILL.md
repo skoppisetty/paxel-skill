@@ -1,6 +1,6 @@
 ---
 name: paxel-skill
-description: Score your own Claude Code sessions on YC Paxel's exact 5-axis rubric, locally, with Claude as the scorer (no upload, no backend). Use when the user wants to see how Paxel would evaluate their work, run a self-assessment on Execution Leverage / Steering / Engineering Quality / Product Thinking / Planning, or check their builder score without sending sessions to YC.
+description: Score your own Claude Code and Codex CLI sessions on YC Paxel's exact 5-axis rubric, locally, with Claude as the scorer (no upload, no backend). Use when the user wants to see how Paxel would evaluate their work, run a self-assessment on Execution Leverage / Steering / Engineering Quality / Product Thinking / Planning, or check their builder score without sending sessions to YC.
 ---
 
 # Paxel Skill
@@ -12,13 +12,19 @@ Reproduces Paxel's per-session judgment **locally**. The scoring/narrative promp
 ## Pipeline (run in order)
 
 ### 1. Resolve target sessions
-Default to the current project's logs: `~/.claude/projects/<encoded-cwd>/*.jsonl` where `<encoded-cwd>` is the absolute working directory with every non-alphanumeric char replaced by `-`. If the user names a project or path, use that. Confirm the session count with the user before scoring many.
+Default to the current project's logs from **both** supported CLIs:
+- **Claude Code:** `~/.claude/projects/<encoded-cwd>/*.jsonl` where `<encoded-cwd>` is the absolute working directory with every non-alphanumeric char replaced by `-`.
+- **Codex CLI:** `~/.codex/sessions/**/*.jsonl` (date-bucketed, not per-project). Condense them all, then **keep only sessions whose `cwd` output field matches the target project directory** (or a subdirectory, e.g. worktrees). Skip this source if `~/.codex/sessions` doesn't exist.
+
+If the user names a project or path, use that. Confirm the session count with the user before scoring many.
 
 ### 2. Condense (deterministic — do NOT score raw transcripts)
 ```
 python3 scripts/condense.py <dir-or-files...>
 ```
-Emits one JSON per session: `condensed_text`, `token_estimate`, `too_short`, and `facts` (user/assistant msg counts, tool_uses, **subagent_dispatches, code_edits, git_commits**, first_prompt). **Skip sessions where `too_short` is true** (under ~200 tokens — Paxel doesn't score them).
+Emits one JSON per session: `condensed_text`, `token_estimate`, `too_short`, `agent_type` (`claude_code` / `codex_cli`), `cwd` (Codex only — use it for the project filter in step 1), and `facts` (user/assistant msg counts, tool_uses, **subagent_dispatches, code_edits, git_commits**, first_prompt). **Skip sessions where `too_short` is true** (under ~200 tokens — Paxel doesn't score them).
+
+Codex rollouts are auto-detected and normalized to the same condensed form first (port of Paxel's `CodexNormalizer`): injected boilerplate dropped, `apply_patch` → per-file Write/Edit (counted in `code_edits`), `update_plan` → a `CODEX_PLAN.md` plan signal (NOT counted as a code edit), shell calls → Bash lines.
 
 This is load-bearing: it drops tool-output bodies, file/diff contents, and Task prompts to byte markers exactly as Paxel does. Scoring the raw `.jsonl` instead would score different, longer text.
 

@@ -34,10 +34,24 @@ LLM scoring is nondeterministic; re-runs vary. The overall number is a calibrati
 
 ## Install (as a Claude Code skill)
 
+Clone straight into your Claude Code skills directory:
+
 ```bash
-ln -s "$(pwd)" ~/.claude/skills/paxel-skill      # or copy the folder
+git clone https://github.com/skoppisetty/paxel-skill.git ~/.claude/skills/paxel-skill
 ```
-Then in Claude Code: invoke `/paxel-skill`, or just ask "score my Claude Code sessions on the Paxel rubric." The scripts need only Python 3 stdlib.
+
+Start a **new** Claude Code session (skills load at startup), then invoke `/paxel-skill` — or just ask *"score my Claude Code sessions on the Paxel rubric."* Update later with `git -C ~/.claude/skills/paxel-skill pull`.
+
+**Hacking on it?** Clone anywhere and symlink instead, so your edits are live:
+
+```bash
+git clone https://github.com/skoppisetty/paxel-skill.git
+ln -s "$(pwd)/paxel-skill" ~/.claude/skills/paxel-skill
+```
+
+**Requirements:** Claude Code + Python 3 (standard library only — nothing to `pip install`).
+
+> **Note:** scoring is **per-project** — it defaults to the logs for the repo you're currently in (`~/.claude/projects/<encoded-cwd>/`), not your entire history. Point it at another project's log dir to score that one instead.
 
 ## Run the scripts directly (no skill)
 

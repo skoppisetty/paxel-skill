@@ -738,6 +738,77 @@ def _extract_charged_messages(user_messages):
     return {"charged_messages": out} if out else {}
 
 
+def extract_model_usage(entries, is_subagent):
+    """Additive per-session accounting (NOT a Paxel port — local report data).
+    Dedupe by message.id: Claude Code writes one JSONL entry per content
+    block, repeating the same id and usage; naive summation inflates counts.
+    Sidechain entries are skipped unless the whole transcript is a subagent
+    (mirrors the event-extraction skip at the entry loop). Returns
+    (model_usage, token_usage); token_usage's assistant_turns counts only
+    usage-bearing messages — a turn without a usage block contributes tokens
+    nowhere, so it must not inflate the per-bucket turn count either;
+    token_usage is {} when no usage blocks exist (e.g. all Codex sessions —
+    the normalizer drops token_count payloads)."""
+    model_counts, tokens, seen = {}, {}, set()
+    for e in entries:
+        if not isinstance(e, dict) or e.get("type") != "assistant":
+            continue
+        if e.get("isSidechain") and not is_subagent:
+            continue
+        msg = e.get("message")
+        if not isinstance(msg, dict):
+            continue
+        mid = msg.get("id")
+        if mid is not None:
+            if mid in seen:
+                continue
+            seen.add(mid)
+        model = str(msg.get("model") or "unknown")
+        model_counts[model] = model_counts.get(model, 0) + 1
+        usage = msg.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        t = tokens.setdefault(model, {
+            "input_tokens": 0, "output_tokens": 0,
+            "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "assistant_turns": 0})
+        t["input_tokens"] += int(usage.get("input_tokens") or 0)
+        t["output_tokens"] += int(usage.get("output_tokens") or 0)
+        t["cache_read_tokens"] += int(usage.get("cache_read_input_tokens") or 0)
+        t["cache_write_tokens"] += int(usage.get("cache_creation_input_tokens") or 0)
+        t["assistant_turns"] += 1
+    return model_counts, tokens
+
+
+def extract_prompt_stats(user_messages):
+    """Additive prompt stats for the report (NOT a Paxel port): median words,
+    count of prompts <= SHORT_PROMPT_MAX_WORDS (the existing Paxel constant),
+    and the top-3 highest-caps-ratio lines (>=3 words, ratio >= 0.6) for the
+    crash-out card. Texts arriving here already passed condense.scrub."""
+    words = sorted(int(m.get("word_count") or 0) for m in user_messages)
+    n = len(words)
+    if n == 0:
+        median = 0.0
+    elif n % 2:
+        median = float(words[n // 2])
+    else:
+        median = _round((words[n // 2 - 1] + words[n // 2]) / 2.0, 1)
+    short = sum(1 for m in user_messages
+                if 0 < int(m.get("word_count") or 0) <= SHORT_PROMPT_MAX_WORDS)
+    quotes = []
+    for m in user_messages:
+        text = str(m.get("text") or "").strip()
+        alpha = [c for c in text if c.isalpha()]
+        if int(m.get("word_count") or 0) >= 3 and alpha:
+            ratio = sum(1 for c in alpha if c.isupper()) / float(len(alpha))
+            if ratio >= 0.6:
+                quotes.append({"text": _truncate(text, 200),
+                               "caps_ratio": _round(ratio, 2)})
+    quotes.sort(key=lambda q: (-q["caps_ratio"], q["text"]))
+    return {"median_words": median, "short_prompt_count": short,
+            "caps_quotes": quotes[:3]}
+
+
 def extract_signals(user_messages, first_timestamp, last_timestamp, tool_count,
                     assistant_count, git_commits, tools_used, events=None,
                     message_timestamps=None):
@@ -960,6 +1031,8 @@ def extract_session(path):
     git_branch = entry_git_branch or normalizer_meta.get("git_branch") \
         or extractor.detected_branch
 
+    model_usage, token_usage = extract_model_usage(entries, is_subagent)
+
     return {
         "session_id": str(normalizer_meta.get("session_id")
                           or os.path.splitext(os.path.basename(path))[0]),
@@ -979,6 +1052,9 @@ def extract_session(path):
         "event_branches": [e["branch"] for e in extractor.events
                            if e["type"] == "git_branch_switch" and e.get("branch")],
         "dispatch_metadata": extractor.dispatch_metadata(),
+        "model_usage": model_usage,
+        "prompt_stats": extract_prompt_stats(raw_user_messages),
+        **({"token_usage": token_usage} if token_usage else {}),
     }
 
 

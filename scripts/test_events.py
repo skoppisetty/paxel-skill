@@ -501,5 +501,124 @@ class HelperTests(unittest.TestCase):
             self.assertFalse(events._cast_bool(falsy), msg=repr(falsy))
 
 
+class ModelUsageTest(unittest.TestCase):
+    def _entry(self, mid, model, usage, sidechain=False):
+        e = {"type": "assistant", "timestamp": "2026-06-01T10:00:00Z",
+             "message": {"role": "assistant", "id": mid, "model": model,
+                         "usage": usage,
+                         "content": [{"type": "text", "text": "x"}]}}
+        if sidechain:
+            e["isSidechain"] = True
+        return e
+
+    USAGE = {"input_tokens": 100, "output_tokens": 50,
+             "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 20}
+
+    def test_dedupes_by_message_id(self):
+        entries = [self._entry("m1", "claude-fable-5", self.USAGE),
+                   self._entry("m1", "claude-fable-5", self.USAGE)]
+        model_usage, token_usage = events.extract_model_usage(entries, False)
+        self.assertEqual(model_usage, {"claude-fable-5": 1})
+        self.assertEqual(token_usage["claude-fable-5"], {
+            "input_tokens": 100, "output_tokens": 50,
+            "cache_read_tokens": 1000, "cache_write_tokens": 20,
+            "assistant_turns": 1})
+
+    def test_excludes_sidechain_entries(self):
+        entries = [self._entry("m1", "claude-fable-5", self.USAGE),
+                   self._entry("m2", "claude-haiku-4-5", self.USAGE,
+                               sidechain=True)]
+        model_usage, token_usage = events.extract_model_usage(entries, False)
+        self.assertEqual(list(model_usage), ["claude-fable-5"])
+
+    def test_sidechain_kept_for_subagent_transcripts(self):
+        entries = [self._entry("m1", "claude-haiku-4-5", self.USAGE,
+                               sidechain=True)]
+        model_usage, _ = events.extract_model_usage(entries, True)
+        self.assertEqual(model_usage, {"claude-haiku-4-5": 1})
+
+    def test_usage_less_transcript_yields_empty_token_usage(self):
+        e = self._entry("m1", "claude-fable-5", self.USAGE)
+        del e["message"]["usage"]
+        model_usage, token_usage = events.extract_model_usage([e], False)
+        self.assertEqual(model_usage, {"claude-fable-5": 1})
+        self.assertEqual(token_usage, {})
+
+    def test_none_id_messages_each_counted(self):
+        # No message id -> nothing to dedupe on; both entries count.
+        entries = [self._entry(None, "claude-fable-5", self.USAGE),
+                   self._entry(None, "claude-fable-5", self.USAGE)]
+        model_usage, token_usage = events.extract_model_usage(entries, False)
+        self.assertEqual(model_usage, {"claude-fable-5": 2})
+        self.assertEqual(token_usage["claude-fable-5"]["input_tokens"], 200)
+        self.assertEqual(token_usage["claude-fable-5"]["assistant_turns"], 2)
+
+
+class PromptStatsTest(unittest.TestCase):
+    def _msgs(self, texts):
+        return [{"text": t, "word_count": len(t.split())} for t in texts]
+
+    def test_median_short_count_and_caps(self):
+        msgs = self._msgs([
+            "fix it",
+            "please refactor the upload pipeline now ok",
+            "I LITERALLY SAID DONT TOUCH THAT FILE",
+            "one two three four five six seven eight nine ten",
+        ])
+        stats = events.extract_prompt_stats(msgs)
+        self.assertEqual(stats["short_prompt_count"], 3)
+        self.assertEqual(stats["median_words"], 7.0)
+        self.assertEqual(len(stats["caps_quotes"]), 1)
+        self.assertEqual(stats["caps_quotes"][0]["text"],
+                         "I LITERALLY SAID DONT TOUCH THAT FILE")
+        self.assertGreaterEqual(stats["caps_quotes"][0]["caps_ratio"], 0.6)
+
+    def test_empty(self):
+        self.assertEqual(events.extract_prompt_stats([]), {
+            "median_words": 0, "short_prompt_count": 0, "caps_quotes": []})
+
+
+class SessionRecordAdditiveKeysTest(unittest.TestCase):
+    def test_extract_session_emits_new_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "s1.jsonl")
+            entries = [
+                {"type": "user", "timestamp": "2026-06-01T10:00:00Z",
+                 "message": {"role": "user", "content": "hello world friend"}},
+                {"type": "assistant", "timestamp": "2026-06-01T10:00:05Z",
+                 "message": {"role": "assistant", "id": "m1",
+                             "model": "claude-fable-5",
+                             "usage": {"input_tokens": 10, "output_tokens": 5,
+                                       "cache_read_input_tokens": 0,
+                                       "cache_creation_input_tokens": 0},
+                             "content": [{"type": "text", "text": "hi"}]}},
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e) + "\n")
+            rec = events.extract_session(p)
+            self.assertEqual(rec["model_usage"], {"claude-fable-5": 1})
+            self.assertIn("token_usage", rec)
+            self.assertEqual(rec["prompt_stats"]["short_prompt_count"], 1)
+
+    def test_token_usage_absent_without_usage_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "s2.jsonl")
+            entries = [
+                {"type": "user", "timestamp": "2026-06-01T10:00:00Z",
+                 "message": {"role": "user", "content": "hello world friend"}},
+                {"type": "assistant", "timestamp": "2026-06-01T10:00:05Z",
+                 "message": {"role": "assistant", "id": "m1",
+                             "model": "claude-fable-5",
+                             "content": [{"type": "text", "text": "hi"}]}},
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e) + "\n")
+            rec = events.extract_session(p)
+            self.assertEqual(rec["model_usage"], {"claude-fable-5": 1})
+            self.assertNotIn("token_usage", rec)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

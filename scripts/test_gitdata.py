@@ -465,5 +465,19 @@ class AuthorFilterTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class CommitsPayloadTest(unittest.TestCase):
+    def test_sha_and_date_only_order_preserved(self):
+        commits = [
+            {"sha": "a" * 40, "short": "a" * 7, "author": "A", "email": "a@x",
+             "date": "2026-06-01T23:10:00+05:30", "subject": "feat: x"},
+            {"sha": "b" * 40, "short": "b" * 7, "author": "B", "email": "b@x",
+             "date": "2026-05-30T09:00:00-07:00", "subject": "fix: y"},
+        ]
+        self.assertEqual(gitdata.commits_payload(commits), [
+            {"sha": "a" * 40, "date": "2026-06-01T23:10:00+05:30"},
+            {"sha": "b" * 40, "date": "2026-05-30T09:00:00-07:00"},
+        ])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -473,6 +473,12 @@ def condense_session(path):
                         entries.append(json.loads(raw))
                     except json.JSONDecodeError:
                         continue
+            # No session_meta for Claude Code (Codex branch above has one);
+            # the first entry carrying a cwd wins.
+            for e in entries:
+                if isinstance(e, dict) and e.get("cwd"):
+                    cwd = str(e["cwd"])
+                    break
     except OSError:
         return None
 

@@ -497,5 +497,35 @@ class AggregateTests(unittest.TestCase):
         self.assertIsNone(overall)
 
 
+class CwdCaptureTest(unittest.TestCase):
+    def test_claude_code_cwd_captured_from_entry_level_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "s1.jsonl")
+            entries = [
+                {"type": "user", "cwd": "/Volumes/Code/myproj",
+                 "timestamp": "2026-06-01T10:00:00Z",
+                 "message": {"role": "user", "content": "hello there world"}},
+                {"type": "assistant", "cwd": "/Volumes/Code/myproj",
+                 "timestamp": "2026-06-01T10:00:05Z",
+                 "message": {"role": "assistant",
+                             "content": [{"type": "text", "text": "hi"}]}},
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e) + "\n")
+            rec = condense.condense_session(p)
+            self.assertEqual(rec["cwd"], "/Volumes/Code/myproj")
+
+    def test_claude_code_cwd_none_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "s2.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"type": "user", "message": {
+                    "role": "user", "content": "hello"}}) + "\n")
+            rec = condense.condense_session(p)
+            self.assertIsNotNone(rec, "session should parse even when too_short")
+            self.assertIsNone(rec["cwd"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

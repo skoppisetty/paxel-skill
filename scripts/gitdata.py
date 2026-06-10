@@ -73,7 +73,7 @@ PORTED QUIRKS (kept on purpose — they are what Paxel actually computes):
 Usage:
   python3 gitdata.py --repo <path> --sessions <sessions.jsonl>
       [--author-name N ...] [--author-email E ...] [--since ISO] [--out out.json]
-Output JSON: {"commit_groups": [...], "episodes": [...]}
+Output JSON: {"commit_groups": [...], "episodes": [...], "commits": [...]}
 """
 import argparse
 import decimal
@@ -615,6 +615,13 @@ def serialize_group(group):
     return out
 
 
+def commits_payload(commits):
+    """Top-level `commits` output: [{sha, date}] for every collected commit,
+    dates as recorded by git log %aI (author-local offset preserved).
+    Additive — feeds report.py's Peak-hours/Ship-day cards only."""
+    return [{"sha": c["sha"], "date": c["date"]} for c in commits]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Commit grouping + episode linking (Paxel CommitGrouper/EpisodeLinker port).")
@@ -637,7 +644,8 @@ def main(argv=None):
     episodes = link_episodes(groups, sessions)
 
     result = {"commit_groups": [serialize_group(g) for g in groups],
-              "episodes": episodes}
+              "episodes": episodes,
+              "commits": commits_payload(commits)}
     payload = json.dumps(result, indent=2, ensure_ascii=False)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

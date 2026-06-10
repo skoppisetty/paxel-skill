@@ -48,10 +48,16 @@ Then for **each batch**, dispatch a Haiku subagent (`model: haiku`): governing i
 python3 scripts/decisions.py finalize --candidates candidates.json --classifications cls.json --sessions sessions.jsonl --out decisions.json
 ```
 For large runs, batch multiple classifier calls per subagent or run them via a Workflow — but each classification must be a Haiku call with the verbatim prompt.
+After every subagent dispatch in this step, append one entry
+`{"stage": "decision-classifier", "target": "<session/batch id>", "model": "claude-haiku-4-5", "total_tokens": <as reported by the harness, or null>, "duration_s": <as reported, or null>}`
+to `llm_calls.json` (a JSON list) in the working directory.
 
 ### 6. Narrate each session (Haiku)
 For each scored session, dispatch a Haiku subagent: governing instruction = full text of `prompts/session_narrative.md` **verbatim**, input = the session's `condensed_text`. Save each result (5-section note + trailing `<session_intent>` tag) to `narratives/<session_id>.md`.
 - **Large sessions:** if `token_estimate > 60000`, split on `USER:` boundaries into <60k chunks, one Haiku call per chunk, then one Haiku merge call (same five headers, under 520 words, one intent tag).
+After every subagent dispatch in this step, append one entry
+`{"stage": "narrative", "target": "<session id>", "model": "claude-haiku-4-5", "total_tokens": <as reported by the harness, or null>, "duration_s": <as reported, or null>}`
+to `llm_calls.json` (a JSON list) in the working directory. For merge calls, use `"stage": "narrative-merge"`.
 
 ### 7. Assemble episode inputs (deterministic)
 ```
@@ -61,18 +67,39 @@ Byte-faithful `build_episode_input` port: header + Code volume (only when commit
 
 ### 8. Score each episode (Haiku)
 For each manifest entry, dispatch a Haiku subagent: governing instruction = full text of `prompts/episode_scoring.md` **verbatim**; input = the episode's `inputs/<episode_id>.txt` content. Output is the rubric JSON: `title, facts, interpretation, counterweight, confidence, scores{...}`. Honor **axis omission** — for `session_only` episodes omit `execution_leverage` and `engineering_quality`; omit any axis with no evidence.
+After every subagent dispatch in this step, append one entry
+`{"stage": "episode-score", "target": "<episode id>", "model": "claude-haiku-4-5", "total_tokens": <as reported by the harness, or null>, "duration_s": <as reported, or null>}`
+to `llm_calls.json` (a JSON list) in the working directory.
+Collect each scoring result wrapped with its manifest id —
+`{"episode_id": <id from inputs/episodes_manifest.json>, ...scorer JSON}` —
+into `episodes.json` (a JSON list). report.py joins on `episode_id`;
+unwrapped results render as "unmatched" and are excluded from the rollup.
 
 ### 9. Aggregate
-Collect per-episode `{scores, confidence}` into a JSON list and run:
+Run the aggregator on the `episodes.json` collected in step 8 (the extra
+`episode_id` key is ignored by the rollup):
 ```
 python3 scripts/aggregate.py episodes.json
 ```
 Returns `axes_APPROX`, `overall_score_APPROX`, `band_APPROX` (WEAK/LIMITED/STRONG/ELITE/EXEMPLAR). Band cuts verbatim; rollup is a confidence-weighted mean (labeled approximation — YC's rule is server-side).
 
-### 10. Present (+ optional analytics report)
-Lead with the **per-axis profile** and notable episodes (title + counterweight). Show `overall_score_APPROX` + `band_APPROX` only with the explicit caveat that the composite approximates YC's server-side number (±1 band floor). Optionally run the upload-payload transparency report (what Paxel's server would receive; it does NOT affect scores):
+### 10. Render the report (deterministic)
 ```
-python3 scripts/analytics.py --repo <repo> --sessions sessions.jsonl --md report.md
+python3 scripts/report.py \
+  --condensed condensed.jsonl --sessions sessions.jsonl \
+  --gitdata gitdata.json --decisions decisions.json \
+  --episodes episodes.json --narratives narratives/ \
+  --llm-calls llm_calls.json \
+  --out report.md
+```
+Present `report.md` to the user verbatim IN THE CONSOLE (it is the entire
+deliverable: score profile, improvement section, highlights, episodes,
+decisions, session economics, analysis-cost ledger, caveats — every claim
+backed by counts). Do NOT produce an HTML artifact or open anything in a
+browser. Optionally run the upload-payload transparency report (does NOT
+affect scores):
+```
+python3 scripts/analytics.py --repo <repo> --sessions sessions.jsonl --md analytics.md
 ```
 
 ## Honesty rails (do not skip)
@@ -80,3 +107,4 @@ python3 scripts/analytics.py --repo <repo> --sessions sessions.jsonl --md report
 - LLM scoring is **nondeterministic**; re-runs vary. Don't present a number as definitive.
 - The **overall/band is an approximation**; only per-axis reads and band thresholds are faithful.
 - **Local deviations** (state if relevant): decision exchange **chains** are not detected (they need YC's embedding service; the client itself degrades identically when embeddings fail); `pr_number` comes from in-session `gh pr create` evidence instead of Paxel's gh-CLI sidecar; committed-return uses the parent-commit-after-return branch (no child subagent session records locally); `## Code Reviews` is absent exactly as in Paxel's local pipeline. See `reference/GAPS.md` for the full register.
+- The report's **Highlights cards are a local reconstruction** in Paxel's card format — the card generator is server-side and not in the client image. The report itself is deterministic: same artifacts, byte-identical output.

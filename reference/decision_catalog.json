@@ -1,0 +1,296 @@
+[
+  {
+    "key": "audit-completeness",
+    "title": "Audit Completeness",
+    "category": "Safety & Process",
+    "pattern": "When the builder finds one gap, they don't just fix it -- they ask \"are there others?\" and demand a systematic check of the entire category. One missing link means the navigation might have other missing links. One forgotten migration means there might be other forgotten files. The builder escalates from a single instance to a class of potential problems."
+  },
+  {
+    "key": "cache-before-api",
+    "title": "Cache Before API",
+    "category": "Code & Architecture",
+    "pattern": "Builder recognizes that data likely exists in a local cache or database and should be checked there before making expensive external API calls. This is the data access equivalent of \"check your pockets before calling lost and found.\" The builder knows what data the system already has and demands that lookup order reflects that knowledge."
+  },
+  {
+    "key": "catch-the-state-bug",
+    "title": "Catch the State Bug",
+    "category": "State & Debugging",
+    "pattern": "The builder reasons about async lifecycle, state machines, and timing to catch bugs that only manifest at runtime. Instead of waiting for a failure to surface, they read the code and identify where state transitions are inconsistent, where polling will see stale data, or where race conditions will produce wrong behavior. This requires holding the full async flow in their head simultaneously."
+  },
+  {
+    "key": "challenge-the-constraint",
+    "title": "Challenge the Constraint",
+    "category": "Premise & Frame Challenging",
+    "pattern": "The builder questions a premise the agent is treating as fixed. Instead of accepting the problem framing and optimizing within it, they ask \"why do we have to do it that way?\" — and the answer is \"we don't.\" One question collapses an entire implementation approach."
+  },
+  {
+    "key": "codify-the-lesson",
+    "title": "Codify the Lesson",
+    "category": "Safety & Process",
+    "pattern": "Builder directs the agent to write a rule, directive, or procedure into a durable artifact that future sessions will read: an agent-config file (CLAUDE.md, AGENTS.md, .cursorrules), a skill or skill file (.claude/skills/**, skills/**/SKILL.md, \"skillify it\"), a shared docs/** template, a README, a linter config, or a CI check. The artifact MUST carry standing instruction read on future sessions. Code comments, inline annotations explaining a condition, plan files written for one epic, handoff docs for one chat session, and feature documentation pages do NOT qualify — those are one-time notes or context transfers, not durable agent rules."
+  },
+  {
+    "key": "collapse-unnecessary-steps",
+    "title": "Collapse Unnecessary Steps",
+    "category": "Scope & Prioritization",
+    "pattern": "The builder recognizes when a multi-step process creates friction without adding value and flattens it into fewer steps or a single action. This isn't about simplifying for simplicity's sake -- it's about recognizing that a step exists because someone thought it was needed, not because it actually is. The builder evaluates each step against the question \"does this decision need to be made by the user, or can it be handled automatically?\""
+  },
+  {
+    "key": "correct-the-tool-choice",
+    "title": "Correct the Tool Choice",
+    "category": "Code & Architecture",
+    "pattern": "The builder has meta-cognitive awareness of which tool fits which problem class and corrects the agent when it reaches for the wrong one. This isn't about knowing tools exist -- it's about knowing which tool is the right abstraction for the problem at hand. Regex for structured validation, LLM-as-judge for subjective quality, the right MCP tool for the right automation task."
+  },
+  {
+    "key": "cross-product-contamination",
+    "title": "Cross-Product Contamination",
+    "category": "State & Debugging",
+    "pattern": "Builder catches when state from one feature unexpectedly leaks into another feature's context. This requires holding multiple product surfaces in mind simultaneously and noticing when data that belongs to Surface A shows up in Surface B. It shows up during hands-on testing when the builder sees something that \"shouldn't be here\" and traces it back to a shared state problem."
+  },
+  {
+    "key": "demand-actionable-diagnostics",
+    "title": "Demand Actionable Diagnostics",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder demands that error displays not just report the error but explain WHY it happened and suggest concrete fixes. Raw error data is not a diagnostic -- it's a starting point. The builder pushes for error UIs that help the user take action rather than stare at a stack trace or nonsensical data."
+  },
+  {
+    "key": "demand-before-after-proof",
+    "title": "Demand Before-After Proof",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder requires empirical validation by re-running the same inputs after a change to measure actual improvement. Not \"does this look right?\" but \"run the same test with the same data and show me the delta.\" This is the scientific method applied to shipping -- hypothesis, change, controlled re-test, compare."
+  },
+  {
+    "key": "demand-full-observability",
+    "title": "Demand Full Observability",
+    "category": "Safety & Process",
+    "pattern": "The builder refuses to accept truncated, summarized, or opaque system data. When logs are too short, telemetry is missing, or outputs are abbreviated, they demand the full picture. This requires understanding that debugging and product quality depend on complete information -- partial data creates blind spots that compound into mysterious failures."
+  },
+  {
+    "key": "demand-idempotent-setup",
+    "title": "Demand Idempotent Setup",
+    "category": "Code & Architecture",
+    "pattern": "Builder recognizes that setup scripts and migrations must be safe to run repeatedly without errors. When the agent writes a migration or install script that assumes a clean state, the builder demands idempotency guards. This is the difference between a script that works once and infrastructure that works reliably."
+  },
+  {
+    "key": "demand-production-parity",
+    "title": "Demand Production Parity",
+    "category": "Code & Architecture",
+    "pattern": "The builder insists that tests, simulations, dev tools, and local workflows match production behavior exactly. When the agent builds a test that doesn't exercise the real codepath, a simulation that skips steps, or a dev tool that behaves differently from the production version, the builder catches it and demands parity. This requires knowing what production actually does, not just what the code says it should do."
+  },
+  {
+    "key": "design-for-the-dgaf-user",
+    "title": "Design for the DGAF User",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder designs interaction flows that assume users will skip optional steps, click past prompts, and take the shortest possible path -- ensuring the happy path works without engagement. The DGAF user isn't hostile; they're busy. Every optional step is a dropout point, and the builder treats dropout as the expected case, not the edge case."
+  },
+  {
+    "key": "deterministic-offload",
+    "title": "Deterministic Offload",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder directs the agent to move a RECURRING task the agent has been solving in latent space — mental math, timestamp conversion, file-existence check, local grep, status lookup, state reconciliation — into a deterministic script, rake task, shell function, or CLI tool that future sessions invoke and get a fixed answer. Trigger: a task done 2+ times via reasoning becomes a codepath that eliminates that reasoning forever. Does NOT qualify: one-time investigation or debugging scripts (\"figure out what's opening these ports\", \"find a founder I can impersonate\"), console scratch or exploration queries, one-off setup or version-lock steps, task delegation to a subagent or reviewer (\"have codex review this\", \"run two subagents to check\"), or generic \"write a script\" requests without the re-use-across-sessions framing. Adding a constant or a non-reused query also does not qualify."
+  },
+  {
+    "key": "enforce-safety-rails",
+    "title": "Enforce Safety Rails",
+    "category": "Safety & Process",
+    "pattern": "The builder establishes and enforces human checkpoints for destructive, autonomous, or irreversible actions. When the agent takes unilateral action on something that should require explicit approval, the builder stops it and codifies the rule. This requires understanding which actions have blast radius and refusing to let convenience override safety."
+  },
+  {
+    "key": "explicit-over-clever",
+    "title": "Explicit Over Clever",
+    "category": "Code & Architecture",
+    "pattern": "The builder rejects clever, indirect, or hidden solutions in favor of clear, obvious ones. When the agent implements something that requires the user to discover or decode it, the builder demands a straightforward alternative. This requires taste -- knowing that what feels elegant to a developer often feels invisible to a user."
+  },
+  {
+    "key": "failures-are-the-signal",
+    "title": "Failures Are the Signal",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder recognizes that failing outputs are MORE valuable than passing ones for iterative improvement. When a batch job or eval run has failures, the builder demands full analysis of the failures specifically, not just a summary of what passed. This is counter to the agent's instinct to minimize bad news."
+  },
+  {
+    "key": "follow-the-reference-product",
+    "title": "Follow the Reference Product",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder uses an existing real-world product as the design spec rather than inventing from scratch, because users already have that mental model. This isn't copying -- it's recognizing that the reference product has already solved thousands of micro-UX decisions through iteration, and reimplementing those decisions from first principles wastes time and produces worse results."
+  },
+  {
+    "key": "full-stop-and-investigate",
+    "title": "Full Stop and Investigate",
+    "category": "Premise & Frame Challenging",
+    "pattern": "The builder calls a hard stop on execution to investigate the landscape before committing to an approach. Instead of letting the agent continue building, they pause everything to survey what already exists, what tools are available, or what the actual state of the system is. This requires the confidence to halt momentum and the judgment to know when forward progress is actually forward drift."
+  },
+  {
+    "key": "generalize-from-rigid",
+    "title": "Generalize from Rigid",
+    "category": "Code & Architecture",
+    "pattern": "Builder recognizes when a hardcoded step-based system needs to become a dynamic, unbounded interaction model. The trigger is usually needing \"one more step\" than the system supports, but the insight is that the problem is inherently open-ended and any fixed number of steps will eventually be wrong. The builder demands the generalization before it's strictly necessary, preventing the more expensive rewrite later."
+  },
+  {
+    "key": "instant-feedback-or-broken",
+    "title": "Instant Feedback or Broken",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder treats laggy or absent UI feedback as a bug, not a performance issue. When clicking a button produces no visible change within 200ms, the builder flags it -- understanding that users interpret silence as \"nothing happened\" and will click again, creating duplicate requests or confusion. The fix is always immediate visual acknowledgment, even if the actual work takes seconds."
+  },
+  {
+    "key": "iron-rule",
+    "title": "Iron Rule",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder identifies a quality invariant that should never be violated, elevates it from preference to hard constraint, and demands both prompt enforcement AND automated evaluation. An iron rule is not \"try to avoid X\" -- it's \"if X happens, the output is broken.\" The builder names the rule explicitly, writes it in caps, and expects it to be tested like a regression."
+  },
+  {
+    "key": "kill-dead-complexity",
+    "title": "Kill Dead Complexity",
+    "category": "Scope & Prioritization",
+    "pattern": "The builder traces a technology dependency down to its foundation and discovers it's solving a problem that no longer exists. Instead of accepting the stack as given, they dig into WHY a layer exists and find the original justification has evaporated. One investigation collapses an entire dependency."
+  },
+  {
+    "key": "kill-the-feature",
+    "title": "Kill the Feature",
+    "category": "Scope & Prioritization",
+    "pattern": "The builder recognizes that a feature is dead on arrival and kills it rather than shipping it because it's already built. This requires separating the sunk cost of building from the forward-looking question of whether it serves the product. It shows up when a builder evaluates a completed or in-progress feature against product goals and concludes that shipping it would add complexity without adding value."
+  },
+  {
+    "key": "model-as-shortcut",
+    "title": "Model as Shortcut",
+    "category": "AI/LLM-Specific",
+    "pattern": "The builder recognizes that a more powerful AI model can eliminate entire UX workflows that were originally built to compensate for model limitations. Instead of maintaining manual curation steps, selection interfaces, or human-in-the-loop workarounds, they ask \"is this step still necessary given what the current model can do?\" This requires staying current on model capabilities and being willing to delete working code that's no longer needed."
+  },
+  {
+    "key": "model-the-data-owner",
+    "title": "Model the Data Owner",
+    "category": "Code & Architecture",
+    "pattern": "Builder decides where data should structurally live based on real-world semantics, not coding convenience. When the agent puts a relationship on the easiest available entity, the builder corrects it to reflect actual ownership. This requires thinking about the domain model, not just the ORM."
+  },
+  {
+    "key": "name-the-code-smell",
+    "title": "Name the Code Smell",
+    "category": "Code & Architecture",
+    "pattern": "The builder explicitly names a structural problem in the code instead of just fixing the immediate symptom. Instead of patching the bug or adding yet another conditional, they identify the underlying pattern problem -- \"this should be one codepath with parameters, not two separate codepaths\" -- and direct the fix at the root cause. This requires seeing past the current ticket to the architecture underneath."
+  },
+  {
+    "key": "name-the-copy",
+    "title": "Name the Copy",
+    "category": "Product & UX Thinking",
+    "pattern": "The builder provides exact user-facing copy instead of describing the intent and letting the agent write it. They type out the actual words that will appear on the screen, because word choice, tone, and voice are taste decisions that can't be delegated. This shows up when the builder writes the copy inline in their instruction rather than saying \"write something that explains X.\""
+  },
+  {
+    "key": "one-level-deeper",
+    "title": "One Level Deeper",
+    "category": "Code & Architecture",
+    "pattern": "Builder recognizes when a system is operating on a pointer rather than the content it points to, and demands dereferencing. This shows up with retweets (show the original, not the retweet wrapper), redirects (follow the URL), summaries (fetch the full text), and any data structure where the surface-level representation is a reference to the real thing."
+  },
+  {
+    "key": "preserve-artifacts",
+    "title": "Preserve Artifacts",
+    "category": "Safety & Process",
+    "pattern": "Builder recognizes that cleanup and deletion of intermediate files is antithetical to debugging and observability. When the agent adds a cleanup step to remove temporary outputs, logs, or partial results, the builder intervenes to preserve them. This requires understanding that today's \"temporary\" file is tomorrow's debugging evidence."
+  },
+  {
+    "key": "protect-the-token-budget",
+    "title": "Protect the Token Budget",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder reasons about LLM context window limits as a system constraint and proactively designs around them. This means understanding how much context the model actually has, what's consuming it, and whether the current design is leaving headroom or pushing limits. It also means catching when token conservation is applied where it shouldn't be -- truncating input for a model that has plenty of room."
+  },
+  {
+    "key": "raise-the-abstraction",
+    "title": "Raise the Abstraction",
+    "category": "Premise & Frame Challenging",
+    "pattern": "The builder looks at a proposed solution and says \"make it more general.\" The implementation works for the specific case but is named, scoped, or structured too narrowly — locking in one example as the concept when the real pattern is broader. The builder pushes the abstraction up one level so it captures the category, not just the instance."
+  },
+  {
+    "key": "redirect-to-existing-tools",
+    "title": "Redirect to Existing Tools",
+    "category": "Code & Architecture",
+    "pattern": "The builder knows the codebase well enough to catch when the agent is building from scratch instead of reusing existing code. This requires a live mental index of what's already built -- components, controllers, utilities, patterns -- so the builder can interrupt with \"we already have that\" before the agent reinvents it. It shows up most often when the agent starts writing vanilla implementations of something that already exists as a reusable abstraction."
+  },
+  {
+    "key": "reference-the-working-version",
+    "title": "Reference the Working Version",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder uses the best existing UI in their own product as the quality floor for new features. Instead of describing what they want from scratch, they point at something already built that works well and say \"make it like that.\" This requires knowing your own product deeply enough to identify which internal pattern is the gold standard."
+  },
+  {
+    "key": "reject-lazy-workaround",
+    "title": "Reject Lazy Workaround",
+    "category": "Premise & Frame Challenging",
+    "pattern": "Builder recognizes when the agent is giving up on the correct solution and proposing a degraded workaround instead. The agent hits a wall, can't figure out why the right approach fails, and suggests disabling the feature or falling back to a simpler path. The builder refuses and demands the real fix."
+  },
+  {
+    "key": "replace-jargon-with-intent",
+    "title": "Replace Jargon with Intent",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder recognizes when a UI label reflects the developer's mental model rather than the user's, and renames it to match what the user actually means when they click. This requires empathy -- the builder has to forget their own context and see the label through fresh eyes. It shows up in button text, menu items, status labels, and any user-facing string."
+  },
+  {
+    "key": "resist-false-simplicity",
+    "title": "Resist False Simplicity",
+    "category": "Premise & Frame Challenging",
+    "pattern": "The agent proposes a clean, elegant simplification. The builder rejects it because reality is messier than the model. The \"simple\" version throws away real-world requirements that don't fit neatly into the abstraction. The builder holds the complexity because the messy version is closer to the truth."
+  },
+  {
+    "key": "respect-the-persona",
+    "title": "Respect the Persona",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder corrects AI-generated text that breaks character by being too meta, too process-oriented, or too hedging -- maintaining the authenticity of a voice or persona. The builder understands that users interact with the output, not the system, and any language that reveals the machinery behind the curtain destroys the experience."
+  },
+  {
+    "key": "revert-bad-decision",
+    "title": "Revert Bad Decision",
+    "category": "Scope & Prioritization",
+    "pattern": "The builder recognizes that a previous decision made things worse and reverts it, even when significant work has been invested. This requires anti-sunk-cost thinking -- evaluating the current state of the system on its merits, independent of how much effort went into getting there. The revert is explicit and decisive, not a gradual drift back."
+  },
+  {
+    "key": "scope-creep-to-todos",
+    "title": "Scope Creep to TODOs",
+    "category": "Scope & Prioritization",
+    "pattern": "Builder recognizes when discovered work is important but out of scope for the current task, and explicitly defers it to a tracked TODO list with priority. Not ignored, not expanded into -- captured and prioritized. This requires the discipline to acknowledge something matters without letting it derail the current work."
+  },
+  {
+    "key": "scope-the-version-boundary",
+    "title": "Scope the Version Boundary",
+    "category": "Code & Architecture",
+    "pattern": "Builder decides which features belong in each version and creates a clean versioning mechanism for coexistence. Instead of letting v2 leak into v1's code path or using heuristics to guess which version applies, they add an explicit version marker and branch cleanly. This is scope unbundling applied to system evolution -- keeping old and new paths independent."
+  },
+  {
+    "key": "scope-unbundling",
+    "title": "Scope Unbundling",
+    "category": "Scope & Prioritization",
+    "pattern": "The builder recognizes that a single feature idea is actually two or more independent concepts mashed together, separates them, identifies which is foundational, and sequences them by dependency. The flashier idea gets explicitly deferred — not dropped, not vaguely hand-waved, but named and parked with a clear trigger for when to revisit."
+  },
+  {
+    "key": "score-with-your-eyes",
+    "title": "Score with Your Eyes",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder runs real data through a system and manually evaluates quality on a rubric before trusting automated metrics. They don't ask \"did the tests pass?\" -- they ask \"look at the output and tell me if it's actually good.\" This requires the builder to define what good looks like in concrete terms, often by providing a scoring scale and asking for honest assessment."
+  },
+  {
+    "key": "spot-the-nonsequitur",
+    "title": "Spot the Non Sequitur",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder evaluates AI-generated output for contextual coherence -- detecting when a piece of content doesn't logically connect to the surrounding material. This requires holding the thread's thesis in mind while scanning each element for relevance, a skill that LLMs systematically lack because they optimize for local plausibility over global coherence."
+  },
+  {
+    "key": "test-your-own-product",
+    "title": "Test Your Own Product",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder insists on dogfooding the feature immediately after building it, finding real bugs through actual usage rather than relying on the agent's claim that it works. This means clicking through the UI, submitting real data, and checking logs -- not just reading the code diff."
+  },
+  {
+    "key": "trace-the-input",
+    "title": "Trace the Input",
+    "category": "AI/LLM-Specific",
+    "pattern": "Builder diagnoses output quality problems by auditing what the LLM actually received as input, not just what it produced. Instead of tweaking the prompt wording or adding more instructions, they inspect the data pipeline feeding the model -- checking for truncation, missing fields, or stale context. This is the LLM equivalent of \"check the query before blaming the database.\""
+  },
+  {
+    "key": "trace-the-stale-data",
+    "title": "Trace the Stale Data",
+    "category": "Product & UX Thinking",
+    "pattern": "Builder has an instinct for when displayed data is from a previous state and should have been invalidated by a user action. They notice when a value looks \"too convenient\" -- a counter that started at zero, a timestamp that doesn't survive page reload, a status that hasn't updated after a mutation. This requires understanding the difference between derived state and source-of-truth state."
+  },
+  {
+    "key": "workflow-from-user-backwards",
+    "title": "Workflow from User Backwards",
+    "category": "Product & UX Thinking",
+    "pattern": "The builder designs product flow by starting from the user's actual behavior and working backward to the data model, rather than starting from the data model and building outward. They ask \"how does the user actually do this?\" first, then figure out what the system needs to support that behavior. This requires empathy for the user's mental model and willingness to let it override architectural convenience."
+  }
+]

@@ -2,6 +2,16 @@
 
 Goal: a local test that produces a **similar** v3 score to YC's. This maps every gap between the client image and that goal, ranked by impact. Grounded in the 9-agent audit of `source/latest/rails` (file:line throughout).
 
+## v2 status — client-side gaps closed (2026-06-09)
+
+The skill now ports the full client-side episode-construction pipeline. In plain terms (gap-register numbers in parentheses, defined in the tables below):
+
+**Closed.** Transcript condensing was already ported in v1 (G7). v2 adds: the decision-law catalog, bundled and injected verbatim into the classifier prompt (G9); the schema coercions that alter scorer input (G10); commit grouping and session→episode linking with the exact confidence constants, first-match-wins (G11); the deterministic signal layer — events, session signals, plan files, user highlights (`events.py`); decision exchanges with the verbatim classifier prompt and deterministic in-session outcomes (`decisions.py`); and a byte-faithful `build_episode_input` (`episodes.py`). The repo-mounted code-quality and velocity analytics (G13) are ported as a transparency report (`analytics.py`) — in Paxel these are upload-only and never reach the scorer, so they cannot move the local score either way.
+
+**Still open — not present in the client image, unclosable by porting:** the server-side overall-score rollup (G1), possible server-side re-scoring (G2), the weights used to fold git-derived signals into the score (G3), run-to-run nondeterminism and provider drift (G4–G6), and version skew across client builds (G14).
+
+**Deliberate local deviations:** decision-exchange *chains* are not detected — they need YC's embedding service, and the client itself silently produces no chains when embeddings fail, so this matches an existing degradation path; `pr_number` is recovered only from an in-session `gh pr create` (Paxel uses a gh-CLI sidecar built at upload time); the subagent committed-return ratio uses the parent-commit-after-return branch of the Ruby predicate, because child subagent session records don't exist locally.
+
 ## Headline correction (supersedes earlier notes)
 
 **The scoring model is `gpt-5.5-none` (GPT-5.5 at reasoning effort "none"), NOT Haiku.** `AnthropicClient::MODELS` maps all tiers `{fast, quality, opus}` → `"gpt-5.5-none"` (`anthropic_client.rb:929-933`). The `claude-haiku-4-5` mapping is a retired rollback comment (`:926-927`). The method is still named `anthropic_model(:fast)` but resolves to GPT-5.5. **Any artifact (tweet/email) that says "Haiku" is now factually wrong for the current build** and is refutable. Use "an LLM (currently GPT-5.5) routed through YC's proxy."
